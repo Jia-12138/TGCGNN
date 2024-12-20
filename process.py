@@ -1,5 +1,5 @@
 
-#####################  下面这里就是属于
+
 import json
 import os
 import sys
@@ -271,17 +271,7 @@ def compute_edge_distances(edge_index,pos):
 
     return edge_distances
 
-## 定义四种用于产生combine_set的函数
-def Phi(r,cutoff):
-    return 1-6*(r/cutoff)**5+15*(r/cutoff)**4-10*(r/cutoff)**3
-def gaussian(r,miuk,betak):
-    return np.exp(-betak*(np.exp(-r)-miuk)**2)
-def miuk(n,K,cutoff):
-    # n=[1,K]
-    return np.exp(-cutoff)+(1-np.exp(-cutoff))/K*n
-def betak(K,cutoff):
-    return (2/K*(1-np.exp(-cutoff)))**(-2)
-###################
+
 
 def process_data(data_path, processed_path, processing_args):
     ##Begin processing data
@@ -415,14 +405,11 @@ def process_data(data_path, processed_path, processing_args):
         edge_index = out[0]     ## 转换成连接
         # 提取与边对应的距离
         edge_distances = distance_matrix[edge_index[0], edge_index[1]]
-        # 将距离信息封装到 self.distance 中
-        # data.distance = torch.Tensor(edge_distances)      ## 72，等一会就让你滚出去
+        
         edge_weight = out[1]    ## 每条连接边的权重
 
-        ## 只修改了这个是否自环的参数
         self_loops = False
         if self_loops == True:
-            ## 自环信息添加到最后了
             edge_index, edge_weight = add_self_loops(
                 edge_index, edge_weight, num_nodes=len(ase_crystal), fill_value=0
             )
@@ -432,7 +419,6 @@ def process_data(data_path, processed_path, processing_args):
             distance_matrix_mask = (
                     distance_matrix_trimmed.fill_diagonal_(1) != 0
             ).int()
-            # 将距离信息封装到 self.distance 中
             edge_distances = distance_matrix[edge_index[0], edge_index[1]]
             # data.distance = torch.Tensor(edge_distances)
 
@@ -450,48 +436,22 @@ def process_data(data_path, processed_path, processing_args):
         target = target_data[index][1:]
         y = torch.Tensor(np.array([target], dtype=np.float32))
         data.y = y
-        ## 下面这个就是来使用自环函数进行波函数的计算
-        vectorij = calculate_vectorij(positions, edge_index)  ## (边的个数，3)
-        kr = np.dot(vectorij, get_Kpoints_random(grid, lattice, volume).transpose())  ## 这里的grid就是q
-        # 初始化 plane_wave，并直接设置为全 0 数组
+        vectorij = calculate_vectorij(positions, edge_index)  
+        kr = np.dot(vectorij, get_Kpoints_random(grid, lattice, volume).transpose())  
         plane_wave = np.zeros_like(kr)
 
-        # 找到 vectorij 不为 0 的位置
         non_zero_mask = np.any(vectorij != 0, axis=1)
-
-        # 对于 vectorij 不为 0 的部分，计算平面波
         plane_wave[non_zero_mask] = np.cos(kr[non_zero_mask]) / np.sqrt(volume)
-
-        # 将 plane_wave 封装到 data 对象中
         data.plane_wave = torch.Tensor(plane_wave)
         # plane_wave = np.cos(kr) / np.sqrt(volume)
-
-        ## 将平面波信息封装到 data 对象中
         data.plane_wave = torch.Tensor(plane_wave)
 
-        ## 下面这部分代码是用于生成combine_set的
-        # combine_sets = []
-        # # gaussian radial
-        # N = n_Gaussian = 64  ## 64
-        # ## 1-65一共就是64次
-        # for n in range(1, N + 1):
-        #     phi = Phi(edge_distances, cutoff=8)
-        #     G = gaussian(edge_distances, miuk(n, N, cutoff=8), betak(N, cutoff=8))
-        #     # print(f"phi shape: {phi.shape}, G shape: {G.shape}")
-        #     combine_sets.append(phi * G)
-        # data.combine_sets = np.array(combine_sets, dtype=np.float32).transpose()
-
-
-
-        ## 下面两行是用于获取原子序数之后并且进行得到元素的含量
-        _atoms_index = ase_crystal.get_atomic_numbers()   ## 获取原子的序数
+        _atoms_index = ase_crystal.get_atomic_numbers()  
         gatgnn_glob_feat = create_global_feat(_atoms_index)
         gatgnn_glob_feat = np.repeat(gatgnn_glob_feat, len(_atoms_index), axis=0)
         data.glob_feat = torch.Tensor(gatgnn_glob_feat).float()
-
         pos = torch.Tensor(ase_crystal.get_positions())
         data.pos = pos
-        ## 以下是用来计算论文中的rij向量
         edge_distances_r = compute_edge_distances(data.edge_index, data.pos)
         data.edge_distances_r = torch.Tensor(edge_distances_r)
 
@@ -554,23 +514,11 @@ def process_data(data_path, processed_path, processing_args):
             )
 
     ##Adds node degree to node features (appears to improve performance)
-    ## 这里如果不适用，先来看看
-    # for index in range(0, len(data_list)):
-    #     data_list[index] = OneHotDegree(
-    #         data_list[index], processing_args["graph_max_neighbors"] + 1
-    #     )
-    #     # 处理 combine_sets
-    #     combine_sets = []
-    #     N = 64
-    #     for n in range(1, N + 1):
-    #         phi = Phi(edge_distances, cutoff=8)
-    #         G = gaussian(edge_distances, miuk(n, N, cutoff=8), betak(N, cutoff=8))
-    #         combine_sets.append(phi * G)
-    #
-    #     combine_sets = np.array(combine_sets, dtype=np.float32).transpose()
-    #
-    #     # 将 combine_sets 转换为 PyTorch 张量并保存到 data 中
-    # data.combine_sets = torch.Tensor(combine_sets)
+    for index in range(0, len(data_list)):
+        data_list[index] = OneHotDegree(
+            data_list[index], processing_args["graph_max_neighbors"] + 1
+        )
+
 
     ##Get graphs based on voronoi connectivity; todo: also get voronoi features
     ##avoid use for the time being until a good approach is found
@@ -612,7 +560,6 @@ def process_data(data_path, processed_path, processing_args):
             if index % 500 == 0:
                 print("Voronoi data processed: ", index)
 
-    ## 获取所有的描述符
     from dscribe.descriptors import SOAP, CoulombMatrix, SineMatrix, EwaldSumMatrix, ACSF, MBTR, LMBTR, ValleOganov
 
     if processing_args["SOAP_descriptor"] == "True":
@@ -722,11 +669,8 @@ def process_data(data_path, processed_path, processing_args):
             )
 
 
-################################################################################
-#  其他函数
-################################################################################
 
-##选择具有距离阈值和有限数量邻居的边
+
 def threshold_sort(matrix, threshold, neighbors, reverse=False, adj=False):
     mask = matrix > threshold
     distance_matrix_trimmed = np.ma.array(matrix, mask=mask)
